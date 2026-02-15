@@ -1,5 +1,20 @@
-# Vue 3 + Vite
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+## 📥 Instrucciones para Continuar en otro PC
 
-Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://vuejs.org/guide/scaling-up/tooling.html#ide-support).
+Si necesitas trabajar desde un ordenador diferente, sigue este flujo:
+
+1.  **Clonar el repositorio:**
+    ```bash
+    git clone [https://github.com/DCastellanos4/SegundoSprintCliente.git](https://github.com/DCastellanos4/SegundoSprintCliente.git)
+    ```
+2.  **Instalar las dependencias:**
+    *(Nota: La carpeta `node_modules` no se sube a GitHub por espacio, este comando las regenera).*
+    ```bash
+    npm install
+    ```
+3.  **Lanzar el entorno de desarrollo:**
+    ```bash
+    npm run dev
+    ```
+
+---
