@@ -1,6 +1,12 @@
 <script setup>
+/**
+ * COMPONENTE: GestionCursos.vue
+ * Descripción: Mantenimiento de grupos/cursos del centro. 
+ * Maneja relaciones con Etapas, Turnos, Profesores (Tutores) y Espacios.
+ */
 import { ref, onMounted } from 'vue'
 
+// --- ESTADO REACTIVO ---
 const cursos = ref([])
 const profesores = ref([])
 const etapas = ref([])
@@ -8,11 +14,13 @@ const turnos = ref([])
 const alumnos = ref([])
 const espacios = ref([])
 
+// Control de UI para el modal de listado de alumnos
 const cursoVerAlumnos = ref(null)
 const mostrarModalAlumnos = ref(false)
 
+// Modelo para el formulario 
 const nuevoCurso = ref({
-    id: '', // Lo calcularemos antes de enviar
+    id: '',
     nombre_curso: '',
     etapa_id: '',
     grupo: '',
@@ -22,6 +30,10 @@ const nuevoCurso = ref({
     aula_id: ''
 })
 
+/**
+ * Carga inicial de datos. 
+ * Usamos Promise.all para traer todas las tablas maestras de golpe.
+ */
 const cargarDatos = async () => {
     try {
         const [resCur, resProf, resEt, resTur, resAlu, resEsp] = await Promise.all([
@@ -40,26 +52,31 @@ const cargarDatos = async () => {
         alumnos.value = await resAlu.json();
         espacios.value = await resEsp.json();
     } catch (error) {
-        console.error("Error cargando datos:", error);
+        console.error("Fallo al sincronizar datos del servidor:", error);
     }
 }
 
+/**
+ * Registra un nuevo curso con lógica de validación
+ */
 const guardarCurso = async () => {
-    // 1. Cálculo manual del ID (Solución al error de la imagen)
-    // Buscamos el ID más alto y le sumamos 1. Si no hay cursos, empezamos en 1.
+    //FALLO DE LA BBDD:
+    // 1. CÁLCULO MANUAL DEL ID:
+    // Evitamos conflictos de autoincremento calculando el siguiente ID disponible.
     const maxId = cursos.value.length > 0
         ? Math.max(...cursos.value.map(c => Number(c.id)))
         : 0;
     nuevoCurso.value.id = (maxId + 1).toString();
 
-    // 2. Validación de Tutoría Única
+    //TUTORÍA ÚNICA:
+    // Un profesor no puede ser tutor de dos cursos en el mismo año.
     const tutorOcupado = cursos.value.find(c =>
         Number(c.tutor_id) === Number(nuevoCurso.value.tutor_id) &&
         c.anio_academico === nuevoCurso.value.anio_academico
     );
 
     if (tutorOcupado) {
-        alert(`Advertencia: Este profesor ya es tutor en ${nuevoCurso.value.anio_academico}.`);
+        alert(`Ojo: Este profesor ya es tutor de otro grupo en ${nuevoCurso.value.anio_academico}.`);
         return;
     }
 
@@ -71,35 +88,42 @@ const guardarCurso = async () => {
         });
 
         if (respuesta.ok) {
-            alert(`Curso creado exitosamente con ID: ${nuevoCurso.value.id}`);
+            alert(`Curso creado con éxito (ID asignado: ${nuevoCurso.value.id})`);
+            // Reset del formulario
             nuevoCurso.value = {
                 id: '', nombre_curso: '', etapa_id: '', grupo: '',
                 turno_id: '', anio_academico: '', tutor_id: '', aula_id: ''
             };
             await cargarDatos();
-        } else {
-            const errorMsg = await respuesta.text();
-            alert("Error al insertar: " + errorMsg);
         }
     } catch (e) {
-        alert("Error de red al conectar con la API");
+        alert("Error de red: No se ha podido contactar con la API.");
     }
 }
 
+/**
+ * INFORMACION DE LOS ALUMNOS DE UN CURSO
+ */
 const verAlumnos = (curso) => {
     cursoVerAlumnos.value = curso;
     mostrarModalAlumnos.value = true;
 };
 
+/**
+ * Lógica de borrado con protección de integridad 
+ */
 const intentarBorrarCurso = async (id) => {
+    //NO PERMITE BORRAR SI EL CURSO TIENE ALUMNOS
     const tieneAlumnos = alumnos.value.some(a => Number(a.curso_id) === Number(id));
+
     if (tieneAlumnos) {
-        alert("No se puede borrar: El curso tiene alumnos vinculados.");
+        alert("Acción bloqueada: No puedes borrar un curso que tiene alumnos matriculados.");
         return;
     }
-    if (confirm("¿Borrar curso?")) {
+
+    if (confirm("¿Estás seguro de que quieres eliminar este curso permanentemente?")) {
         await fetch(`http://100.52.46.68:3000/cursos/${id}`, { method: 'DELETE' });
-        cargarDatos();
+        await cargarDatos();
     }
 }
 
@@ -108,34 +132,38 @@ onMounted(cargarDatos);
 
 <template>
     <div class="gestion-container">
-        <h3>Gestión de Cursos (H5)</h3>
+        <header class="seccion-header">
+            <h3>Gestión de Cursos (H5)</h3>
+        </header>
 
         <form @submit.prevent="guardarCurso" class="form-grid">
             <input v-model="nuevoCurso.nombre_curso" placeholder="Nombre (ej. 2º DAW)" required>
             <input v-model="nuevoCurso.grupo" placeholder="Grupo (ej. A)" required>
-            <input v-model="nuevoCurso.anio_academico" placeholder="Año (ej. 2025-2026)" required>
+            <input v-model="nuevoCurso.anio_academico" placeholder="Año Académico (ej. 2025-2026)" required>
 
             <select v-model="nuevoCurso.etapa_id" required>
-                <option value="" disabled>Etapa</option>
+                <option value="" disabled>-- Seleccionar Etapa --</option>
                 <option v-for="e in etapas" :key="e.id" :value="e.id">{{ e.nombre }}</option>
             </select>
 
             <select v-model="nuevoCurso.turno_id" required>
-                <option value="" disabled>Turno</option>
+                <option value="" disabled>-- Seleccionar Turno --</option>
                 <option v-for="t in turnos" :key="t.id" :value="t.id">{{ t.nombre }}</option>
             </select>
 
             <select v-model="nuevoCurso.aula_id" required>
-                <option value="" disabled>Espacio Asignado</option>
+                <option value="" disabled>-- Asignar Aula/Espacio --</option>
                 <option v-for="es in espacios" :key="es.id" :value="es.id">{{ es.nombre }}</option>
             </select>
 
             <select v-model="nuevoCurso.tutor_id" required>
-                <option value="" disabled>Tutor</option>
-                <option v-for="p in profesores" :key="p.id" :value="p.id">{{ p.nombre }} {{ p.apellidos }}</option>
+                <option value="" disabled>-- Asignar Tutor/a --</option>
+                <option v-for="p in profesores" :key="p.id" :value="p.id">
+                    {{ p.nombre }} {{ p.apellidos }}
+                </option>
             </select>
 
-            <button type="submit" class="btn-success">Registrar Curso</button>
+            <button type="submit" class="btn-success">Registrar Nuevo Curso</button>
         </form>
 
         <div class="table-container">
@@ -143,20 +171,23 @@ onMounted(cargarDatos);
                 <thead>
                     <tr>
                         <th>ID</th>
-                        <th>Curso/Grupo</th>
+                        <th>Curso y Grupo</th>
                         <th>Año</th>
-                        <th>Tutor</th>
+                        <th>Tutor Asignado</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr v-for="c in cursos" :key="c.id">
-                        <td>{{ c.id }}</td>
+                        <td><strong>#{{ c.id }}</strong></td>
                         <td>{{ c.nombre_curso }} - {{ c.grupo }}</td>
                         <td>{{ c.anio_academico }}</td>
-                        <td>{{profesores.find(p => p.id == c.nombre)?.nombre || 'S/T'}}</td>
                         <td>
-                            <button @click="verAlumnos(c)" class="btn-accent">Alumnos</button>
+                            {{profesores.find(p => p.dni_nie == c.tutor_id)?.nombre || 'S/T'}}
+                            {{profesores.find(p => p.dni_nie == c.tutor_id)?.apellidos || ''}}
+                        </td>
+                        <td class="td-actions">
+                            <button @click="verAlumnos(c)" class="btn-accent">Ver Alumnos</button>
                             <button @click="intentarBorrarCurso(c.id)" class="btn-danger">Borrar</button>
                         </td>
                     </tr>
@@ -166,23 +197,29 @@ onMounted(cargarDatos);
 
         <div v-if="mostrarModalAlumnos" class="modal-overlay">
             <div class="modal-box">
-                <h4>Alumnos en {{ cursoVerAlumnos?.nombre_curso }}</h4>
+                <h4>Alumnos matriculados en {{ cursoVerAlumnos?.nombre_curso }}</h4>
                 <div class="lista-scroll">
                     <ul v-if="alumnos.filter(a => Number(a.curso_id) === Number(cursoVerAlumnos?.id)).length > 0">
                         <li v-for="a in alumnos.filter(a => Number(a.curso_id) === Number(cursoVerAlumnos?.id))"
                             :key="a.id">
-                            {{ a.nombre }} {{ a.apellidos }} ({{ a.nia }})
+                            {{ a.nombre }} {{ a.apellidos }} <small>({{ a.nia }})</small>
                         </li>
                     </ul>
-                    <p v-else>No hay alumnos en este curso.</p>
+                    <p v-else class="empty-msg">No hay alumnos registrados en este grupo.</p>
                 </div>
-                <button @click="mostrarModalAlumnos = false" class="btn-sec">Cerrar</button>
+                <button @click="mostrarModalAlumnos = false" class="btn-sec">Cerrar Ventana</button>
             </div>
         </div>
     </div>
 </template>
 
 <style scoped>
+.seccion-header {
+    margin-bottom: 20px;
+    border-left: 5px solid #f39c12;
+    padding-left: 15px;
+}
+
 .form-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -190,20 +227,22 @@ onMounted(cargarDatos);
     background: #fff;
     padding: 20px;
     border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
 }
 
+/* Inputs oscuros con texto blanco como pediste */
 select,
 input {
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
     color: #fff;
-    /* Texto blanco solicitado */
+    background: #2c3e50;
 }
 
 option {
+    background: #2c3e50;
     color: #fff;
-    /* Opciones blancas solicitadas */
 }
 
 .btn-success {
@@ -211,18 +250,24 @@ option {
     background: #27ae60;
     color: white;
     border: none;
-    padding: 12px;
+    padding: 14px;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: 6px;
     font-weight: bold;
+    transition: background 0.3s;
+}
+
+.btn-success:hover {
+    background: #219150;
 }
 
 .table-container {
     margin-top: 25px;
     background: white;
-    padding: 15px;
+    padding: 20px;
     border-radius: 8px;
     color: #333;
+    overflow-x: auto;
 }
 
 table {
@@ -232,17 +277,28 @@ table {
 
 th,
 td {
-    padding: 12px;
+    padding: 14px;
     text-align: left;
-    border-bottom: 1px solid #eee;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+th {
+    background: #f9f9f9;
+    color: #7f8c8d;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+}
+
+.td-actions {
+    display: flex;
+    gap: 8px;
 }
 
 .btn-accent {
     background: #f39c12;
     color: white;
-    margin-right: 8px;
     border: none;
-    padding: 6px 10px;
+    padding: 8px 12px;
     border-radius: 4px;
     cursor: pointer;
 }
@@ -251,7 +307,7 @@ td {
     background: #e74c3c;
     color: white;
     border: none;
-    padding: 6px 10px;
+    padding: 8px 12px;
     border-radius: 4px;
     cursor: pointer;
 }
@@ -260,12 +316,13 @@ td {
     background: #95a5a6;
     color: white;
     border: none;
-    padding: 10px 20px;
+    padding: 10px 25px;
     border-radius: 4px;
     cursor: pointer;
-    margin-top: 15px;
+    margin-top: 20px;
 }
 
+/* Estilos del Modal */
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -281,11 +338,38 @@ td {
 
 .modal-box {
     background: white;
-    padding: 30px;
+    padding: 35px;
     border-radius: 12px;
-    max-width: 450px;
+    max-width: 500px;
     width: 90%;
     color: #333;
     text-align: center;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.lista-scroll {
+    max-height: 300px;
+    overflow-y: auto;
+    margin: 20px 0;
+    border: 1px solid #eee;
+    border-radius: 6px;
+    padding: 10px;
+}
+
+.lista-scroll ul {
+    list-style: none;
+    padding: 0;
+    text-align: left;
+}
+
+.lista-scroll li {
+    padding: 8px 0;
+    border-bottom: 1px solid #f9f9f9;
+    font-size: 0.95rem;
+}
+
+.empty-msg {
+    color: #95a5a6;
+    font-style: italic;
 }
 </style>

@@ -1,158 +1,216 @@
 <script setup>
+/**
+ * COMPONENTE: Login.vue
+ * comprobando contra el endpoint de usuarios
+ */
 import { ref } from 'vue'
 
+// Definimos el evento para avisar a App.vue cuando alguien entre con éxito
 const emit = defineEmits(['login-exitoso'])
 
-const nombreUsuario = ref('')
-const passwordUsuario = ref('')
-const errorLogin = ref(false)
+// Variables reactivas para el formulario
+const userField = ref('')
+const passField = ref('')
+const hasError = ref(false)
+const isLoading = ref(false) // para que el botón no se pueda pulsar mil veces
 
+/**
+ * Función principal para validar credenciales.
+ */
 const realizarLogin = async () => {
+    hasError.value = false
+    isLoading.value = true
+
     try {
-        const respuesta = await fetch('http://100.52.46.68:3000/usuarios');
-        const usuarios = await respuesta.json();
+        // consumimos la api
+        const respuesta = await fetch('http://100.52.46.68:3000/usuarios')
 
-        const encontrado = usuarios.find(u =>
-            u.login === nombreUsuario.value && u.password_hash === passwordUsuario.value
-        );
+        if (!respuesta.ok) throw new Error("No se pudo conectar con la API")
 
-        if (encontrado) {
-            emit('login-exitoso', encontrado);
+        const usuarios = await respuesta.json()
+
+        // se busca si existe el usuario con esa combinación de login/password
+        const loginValido = usuarios.find(u =>
+            u.login === userField.value && u.password_hash === passField.value
+        )
+
+        if (loginValido) {
+            console.log("Acceso concedido a:", loginValido.login)
+            emit('login-exitoso', loginValido)
         } else {
-            errorLogin.value = true;
+            hasError.value = true
         }
-    } catch (e) { console.error(e); }
-};
+    } catch (err) {
+        console.error("Fallo crítico en el login:", err)
+        alert("Error de conexión con el servidor.")
+    } finally {
+        isLoading.value = false
+    }
+}
 </script>
 
 <template>
     <div class="login-container">
         <div class="login-box">
-            <div class="login-header">
-                <h2>Escarlatti-Gest</h2>
-                <p>Gestión de Incidencias y Aulas</p>
-            </div>
+            <header class="login-header">
+                <h2>Escarlatti<span>Gest</span></h2>
+                <p>Administración de Centro</p>
+            </header>
 
-            <form @submit.prevent="realizarLogin">
+            <form @submit.prevent="realizarLogin" class="login-form">
                 <div class="input-group">
-                    <label>Usuario</label>
-                    <input v-model="nombreUsuario" placeholder="Introduce tu usuario" required>
+                    <label for="username">Usuario</label>
+                    <input id="username" v-model="userField" type="text" placeholder="nombre@centro.es" required>
                 </div>
 
                 <div class="input-group">
-                    <label>Contraseña</label>
-                    <input v-model="passwordUsuario" type="password" placeholder="••••••••" required>
+                    <label for="password">Contraseña</label>
+                    <input id="password" v-model="passField" type="password" placeholder="••••••••" required>
                 </div>
 
-                <button type="submit" class="btn-login">Entrar al Sistema</button>
+                <button type="submit" class="btn-login" :disabled="isLoading">
+                    <span v-if="!isLoading">Entrar al Sistema</span>
+                    <span v-else class="loader">Comprobando...</span>
+                </button>
             </form>
 
-            <div v-if="errorLogin" class="error-message">
-                ⚠️ Credenciales incorrectas. Inténtalo de nuevo.
-            </div>
+            <Transition name="slide-up">
+                <div v-if="hasError" class="error-message">
+                    <span class="icon">⚠️</span> Error en las credenciales
+                </div>
+            </Transition>
         </div>
     </div>
 </template>
 
 <style scoped>
-/* Contenedor para centrar el login en toda la pantalla */
+/* Variables locales para el rediseño */
+.login-box {
+    --primary: #6366f1;       /* Indigo moderno */
+    --primary-hover: #4f46e5;
+    --accent: #10b981;        /* Esmeralda */
+    --dark-bg: #0f172a;       /* Slate 900 */
+    --input-bg: #1e293b;      /* Slate 800 */
+    --text-main: #1e293b;
+    --text-muted: #64748b;
+    --error: #ef4444;
+}
+
 .login-container {
     display: flex;
     justify-content: center;
     align-items: center;
     min-height: 80vh;
-    /* Ajustado para que no choque con el margen de App.vue */
 }
 
 .login-box {
-    background: white;
-    padding: 40px;
-    border-radius: 12px;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    background: #ffffff;
+    padding: 3rem 2.5rem;
+    border-radius: 20px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
     width: 100%;
     max-width: 400px;
     text-align: center;
+    border: 1px solid #f1f5f9;
 }
 
-.login-header {
-    margin-bottom: 30px;
+/* Header con estilo moderno */
+.login-header { margin-bottom: 2.5rem; }
+
+.logo-icon {
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    width: 50px;
+    height: 50px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1rem;
+    color: white;
+    font-weight: 800;
+    font-size: 1.5rem;
+    box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.3);
 }
 
-.logo-placeholder {
-    font-size: 3rem;
-    margin-bottom: 10px;
-}
-
-h2 {
-    color: #2c3e50;
-    margin: 0;
+.login-header h2 {
+    color: var(--dark-bg);
     font-size: 1.8rem;
+    letter-spacing: -0.5px;
 }
+
+.login-header h2 span { color: var(--primary); }
 
 .login-header p {
-    color: #7f8c8d;
-    font-size: 0.9rem;
-    margin-top: 5px;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    margin-top: 0.2rem;
 }
 
-/* Grupos de Input */
-.input-group {
-    text-align: left;
-    margin-bottom: 20px;
-}
+/* Inputs con estilo "Deep" */
+.input-group { text-align: left; margin-bottom: 1.5rem; }
 
 .input-group label {
     display: block;
+    margin-bottom: 0.5rem;
+    color: var(--text-main);
     font-weight: 600;
-    color: #34495e;
-    margin-bottom: 8px;
     font-size: 0.85rem;
 }
 
 input {
     width: 100%;
-    padding: 12px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    box-sizing: border-box;
+    padding: 14px;
+    border: 2px solid #f1f5f9;
+    border-radius: 12px;
+    background: #f8fafc;
+    color: var(--dark-bg); /* Texto oscuro para contraste en fondo claro */
     font-size: 1rem;
-    transition: border-color 0.3s;
-    color: #fff;
+    transition: all 0.2s ease;
 }
 
 input:focus {
     outline: none;
-    border-color: #3498db;
-    box-shadow: 0 0 5px rgba(52, 152, 219, 0.2);
+    border-color: var(--primary);
+    background: #ffffff;
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
 }
 
-/* Botón Principal */
+/* Botón con degradado suave */
 .btn-login {
     width: 100%;
     padding: 14px;
-    background-color: #2c3e50;
-    /* Color corporativo oscuro */
+    background: var(--dark-bg);
     color: white;
     border: none;
-    border-radius: 6px;
+    border-radius: 12px;
     font-size: 1rem;
-    font-weight: bold;
+    font-weight: 700;
     cursor: pointer;
-    transition: background 0.3s;
+    transition: all 0.3s ease;
+    margin-top: 1rem;
 }
 
-.btn-login:hover {
-    background-color: #34495e;
+.btn-login:hover:not(:disabled) {
+    background: var(--primary);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.3);
 }
 
-/* Mensaje de Error */
+.btn-login:disabled { opacity: 0.7; cursor: not-allowed; }
+
+/* Mensaje de error más elegante */
 .error-message {
-    margin-top: 20px;
-    padding: 10px;
-    background-color: #fdeaea;
-    color: #e74c3c;
-    border-radius: 4px;
+    margin-top: 1.5rem;
+    padding: 12px;
+    background: #fef2f2;
+    color: var(--error);
+    border-radius: 10px;
     font-size: 0.85rem;
     font-weight: 600;
+    border: 1px solid #fee2e2;
 }
+
+/* Animación de entrada para el error */
+.slide-up-enter-active { transition: all 0.3s ease-out; }
+.slide-up-enter-from { opacity: 0; transform: translateY(10px); }
 </style>

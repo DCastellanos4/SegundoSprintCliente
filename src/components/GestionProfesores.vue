@@ -1,117 +1,189 @@
 <script setup>
+/**
+ * COMPONENTE: GestionProfesores.vue
+ * Descripción: Módulo para el mantenimiento de la plantilla docente.
+ * Incluye carga de departamentos y roles para la integridad de datos.
+ */
 import { ref, onMounted } from 'vue'
 
-const profesores = ref([])
-const departamentos = ref([])
-const roles = ref([])
+// --- ESTADO REACTIVO ---
+const listaProfesores = ref([])
+const listaDepartamentos = ref([])
+const listaRoles = ref([])
 
-const nuevoProfesor = ref({
+// Ref para saber si estamos editando (guardamos el DNI original)
+const editandoDNI = ref(null);
+
+// Modelo de profesor incial(semi-clase)
+const modeloProfesor = ref({
     dni_nie: '',
     nombre: '',
     apellidos: '',
     correo_institucional: '',
     departamento_id: '',
-    rol_id: 2,
+    rol_id: 2, //rol por defecto de profesor
     password_hash: ''
 })
 
-const cargarDatosIniciales = async () => {
+/**
+ * Función de carga masiva. 
+ */
+const sincronizarBaseDeDatos = async () => {
     try {
         const [resProf, resDep, resRoles] = await Promise.all([
             fetch('http://100.52.46.68:3000/profesores'),
             fetch('http://100.52.46.68:3000/departamentos'),
             fetch('http://100.52.46.68:3000/roles')
         ]);
-        profesores.value = await resProf.json();
-        departamentos.value = await resDep.json();
-        roles.value = await resRoles.json();
+
+        listaProfesores.value = await resProf.json();
+        listaDepartamentos.value = await resDep.json();
+        listaRoles.value = await resRoles.json();
     } catch (error) {
-        console.error("Error cargando tablas:", error);
+        console.error("Fallo crítico al sincronizar tablas maestros:", error);
     }
 }
 
+/**
+ * Prepara el formulario para editar un profesor existente
+ */
+const iniciarEdicion = (profe) => {
+    editandoDNI.value = profe.dni_nie;
+    // Hacemos una copia para no modificar la tabla en tiempo real hasta guardar
+    modeloProfesor.value = { ...profe };
+}
+
+/**
+ * Limpia el formulario y sale del modo edición
+ */
+const cancelarEdicion = () => {
+    editandoDNI.value = null;
+    modeloProfesor.value = {
+        dni_nie: '', nombre: '', apellidos: '',
+        correo_institucional: '', departamento_id: '',
+        rol_id: 2, password_hash: ''
+    };
+}
+
+/**
+ * Registrar o Actualizar profesor (H3)
+ */
 const guardarProfesor = async () => {
-    // CA1: Validación de duplicados
-    const duplicado = profesores.value.find(p =>
-        p.dni_nie === nuevoProfesor.value.dni_nie ||
-        p.correo_institucional === nuevoProfesor.value.correo_institucional
-    );
-    if (duplicado) {
-        alert("Error: El DNI o el Correo ya existen");
-        return;
+    // Si no estamos editando, comprobamos duplicados (DNI o Email)
+    if (!editandoDNI.value) {
+        const existe = listaProfesores.value.find(p =>
+            p.dni_nie === modeloProfesor.value.dni_nie ||
+            p.correo_institucional === modeloProfesor.value.correo_institucional
+        );
+        if (existe) {
+            alert("ERROR: Ya existe un docente con ese DNI o correo institucional.");
+            return;
+        }
     }
-    await fetch('http://100.52.46.68:3000/profesores', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(nuevoProfesor.value)
-    });
-    nuevoProfesor.value = { dni_nie: '', nombre: '', apellidos: '', correo_institucional: '', departamento_id: '', rol_id: '', password_hash: '' };
-    cargarDatosIniciales();
-}
-
-// NUEVA FUNCIÓN: Borrado directo sin modal
-const borrarDirecto = async (id) => {
-    if (!confirm("¿Seguro que quieres eliminar este profesor?")) return;
 
     try {
-        // H3: Realizamos el borrado directo. 
-        // Nota: Si la API exige el parámetro reservas, añadimos ?reservas=cancelar por defecto.
-        const url = `http://100.52.46.68:3000/profesores/${id}`;
+        // Si hay un DNI en 'editandoDNI', usamos PUT, si no POST
+        const metodo = editandoDNI.value ? 'PUT' : 'POST';
+        const url = editandoDNI.value
+            ? `http://100.52.46.68:3000/profesores/${editandoDNI.value}`
+            : 'http://100.52.46.68:3000/profesores';
 
-        const respuesta = await fetch(url, { method: 'DELETE' });
+        const respuesta = await fetch(url, {
+            method: metodo,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(modeloProfesor.value)
+        });
 
         if (respuesta.ok) {
-            alert("Profesor eliminado");
-            await cargarDatosIniciales(); // Recargamos la lista
-        } else {
-            const txt = await respuesta.text();
-            alert("Error del servidor: " + txt);
+            alert(editandoDNI.value ? "Profesor actualizado correctamente." : "Profesor registrado correctamente.");
+            cancelarEdicion();
+            await sincronizarBaseDeDatos();
         }
     } catch (error) {
-        console.error("Error de red:", error);
         alert("No se pudo conectar con el servidor.");
+    }
+}
+
+/**
+ * Borrado directo de profesorado.
+ */
+const eliminarDocente = async (dni) => {
+    const confirmacion = confirm(`¿Estás seguro de que quieres dar de baja al profesor con DNI: ${dni}?`);
+
+    if (confirmacion) {
+        try {
+            const respuesta = await fetch(`http://100.52.46.68:3000/profesores/${dni}`, {
+                method: 'DELETE'
+            });
+
+            if (respuesta.ok) {
+                alert("Registro eliminado con éxito.");
+                await sincronizarBaseDeDatos();
+            } else {
+                const errorServidor = await respuesta.text();
+                alert("La API denegó el borrado: " + errorServidor);
+            }
+        } catch (error) {
+            console.error("Error de red en DELETE:", error);
+        }
     }
 };
 
-onMounted(cargarDatosIniciales);
+onMounted(sincronizarBaseDeDatos);
 </script>
 
 <template>
     <div class="gestion-container">
-        <h3>Gestión de Profesores (H3)</h3>
+        <header class="header-seccion">
+            <h3>{{ editandoDNI ? 'Editando Profesor' : 'Gestión de Profesores (H3)' }}</h3>
+        </header>
 
         <form @submit.prevent="guardarProfesor" class="form-grid">
-            <input v-model="nuevoProfesor.dni_nie" placeholder="DNI/NIE" required>
-            <input v-model="nuevoProfesor.nombre" placeholder="Nombre" required>
-            <input v-model="nuevoProfesor.apellidos" placeholder="Apellidos" required>
-            <input v-model="nuevoProfesor.correo_institucional" type="text" placeholder="Correo Institucional" required>
+            <input v-model="modeloProfesor.dni_nie" placeholder="DNI / NIE" :disabled="editandoDNI" required>
+            <input v-model="modeloProfesor.nombre" placeholder="Nombre" required>
+            <input v-model="modeloProfesor.apellidos" placeholder="Apellidos" required>
+            <input v-model="modeloProfesor.correo_institucional" type="email" placeholder="Correo Institucional"
+                required>
 
-            <select v-model="nuevoProfesor.departamento_id" required>
-                <option value="" disabled>Seleccione Departamento</option>
-                <option v-for="d in departamentos" :key="d.id" :value="d.id">{{ d.nombre }}</option>
+            <select v-model="modeloProfesor.departamento_id" required>
+                <option value="" disabled>-- Selecciona Departamento --</option>
+                <option v-for="dep in listaDepartamentos" :key="dep.id" :value="dep.id">
+                    {{ dep.nombre }}
+                </option>
             </select>
 
-            <input v-model="nuevoProfesor.password_hash" type="text" placeholder="Contraseña" required>
-            <button type="submit" class="btn-success">Registrar Profesor</button>
+            <input v-model="modeloProfesor.password_hash" type="password" placeholder="Contraseña de acceso" required>
+
+            <div class="form-actions">
+                <button type="submit" class="btn-success">
+                    {{ editandoDNI ? 'Guardar Cambios' : 'Añadir Docente al Sistema' }}
+                </button>
+                <button v-if="editandoDNI" type="button" @click="cancelarEdicion" class="btn-sec">
+                    Cancelar
+                </button>
+            </div>
         </form>
 
         <div class="table-container">
             <table>
                 <thead>
                     <tr>
-                        <th>Profesor</th>
-                        <th>DNI</th>
+                        <th>Nombre y Apellidos</th>
+                        <th>Identificación</th>
                         <th>Departamento</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="p in profesores" :key="p.id">
-                        <td>{{ p.nombre }} {{ p.apellidos }}</td>
-                        <td>{{ p.dni_nie }}</td>
-                        <td>{{departamentos.find(d => d.id == p.departamento_id)?.nombre || 'N/A'}}</td>
+                    <tr v-for="profe in listaProfesores" :key="profe.dni_nie">
+                        <td><strong>{{ profe.nombre }} {{ profe.apellidos }}</strong></td>
+                        <td>{{ profe.dni_nie }}</td>
                         <td>
-                            <button @click="borrarDirecto(p.dni_nie)" class="btn-danger">Eliminar</button>
+                            {{listaDepartamentos.find(d => d.id == profe.departamento_id)?.nombre || 'Sin asignar'}}
+                        </td>
+                        <td class="td-actions">
+                            <button @click="iniciarEdicion(profe)" class="btn-accent">Editar</button>
+                            <button @click="eliminarDocente(profe.dni_nie)" class="btn-danger">Eliminar</button>
                         </td>
                     </tr>
                 </tbody>
@@ -121,6 +193,46 @@ onMounted(cargarDatosIniciales);
 </template>
 
 <style scoped>
+/* Estilos extra para la edición */
+.td-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.form-actions {
+    grid-column: span 2;
+    display: flex;
+    gap: 10px;
+}
+
+.btn-accent {
+    background: #f39c12;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: bold;
+}
+
+.btn-sec {
+    background: #95a5a6;
+    color: white;
+    border: none;
+    padding: 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    flex: 1;
+    font-weight: bold;
+}
+
+.header-seccion {
+    margin-bottom: 20px;
+    border-left: 5px solid #27ae60;
+    padding-left: 15px;
+}
+
 .form-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -128,35 +240,58 @@ onMounted(cargarDatosIniciales);
     background: #fff;
     padding: 20px;
     border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 select,
 input {
-    padding: 10px;
+    padding: 12px;
     border: 1px solid #ccc;
     border-radius: 4px;
     color: #fff;
+    background: #2c3e50;
+    font-size: 0.95rem;
+}
+
+/* Evitar que parezca que se puede escribir en DNI bloqueado */
+input:disabled {
+    background: #34495e;
+    color: #95a5a6;
+    cursor: not-allowed;
 }
 
 input::placeholder {
-    color: grey;
+    color: #bdc3c7;
+}
+
+input:focus {
+    border-color: #27ae60;
+    outline: none;
 }
 
 .btn-success {
-    grid-column: span 2;
+    flex: 2;
     background: #27ae60;
     color: white;
     border: none;
-    padding: 12px;
+    padding: 15px;
     cursor: pointer;
+    font-weight: bold;
+    border-radius: 4px;
+    transition: background 0.3s;
+}
+
+.btn-success:hover {
+    background: #219150;
 }
 
 .table-container {
     margin-top: 30px;
     background: white;
-    padding: 10px;
+    padding: 15px;
     border-radius: 8px;
     color: #333;
+    overflow-x: auto;
 }
 
 table {
@@ -166,17 +301,31 @@ table {
 
 th,
 td {
-    padding: 12px;
+    padding: 15px;
     text-align: left;
-    border-bottom: 1px solid #eee;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+th {
+    background: #f9f9f9;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    color: #7f8c8d;
 }
 
 .btn-danger {
     background: #e74c3c;
     color: white;
-    padding: 8px;
+    padding: 8px 15px;
     cursor: pointer;
     border: none;
     border-radius: 4px;
+    font-size: 0.85rem;
+    transition: transform 0.2s;
+}
+
+.btn-danger:hover {
+    transform: scale(1.05);
+    background: #c0392b;
 }
 </style>

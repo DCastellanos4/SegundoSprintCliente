@@ -1,90 +1,131 @@
 <script setup>
+/**
+ * COMPONENTE: GestionEspacios.vue
+ * Descripción: Mantenimiento de aulas y salas del centro 
+ */
 import { ref, onMounted } from 'vue'
 
-const espacios = ref([])
+const listaEspacios = ref([])
 
-// Estructura exacta basada en tus imágenes JSON
-const nuevoEspacio = ref({
+const modeloEspacio = ref({
     id: '',
     nombre: '',
     ubicacion_planta: '',
     capacidad_max: 0,
     equipamiento: '',
-    estado_operativo: 'true' // Almacenado como string según tu captura
+    estado_operativo: 'true' // Por defecto son disponibles
 })
 
-const cargarEspacios = async () => {
+/**
+ * Trae los datos de la API y los ordena para que la tabla sea estable.
+ */
+const cargarDatos = async () => {
     try {
         const respuesta = await fetch('http://100.52.46.68:3000/espacios')
-        espacios.value = await respuesta.json()
+        const datos = await respuesta.json()
+        
+        // ORDENAMIENTO: Ordenamos por ID para que no cambien de fila al editarlos
+        listaEspacios.value = datos.sort((a, b) => Number(a.id) - Number(b.id))
     } catch (error) {
-        console.error("Error al cargar espacios:", error);
+        console.error("Fallo al conectar con la API de espacios:", error);
     }
 }
 
-const guardarEspacio = async () => {
-    // Cálculo manual del ID autoincremental para evitar el error 'null value in column id'
-    const maxId = espacios.value.length > 0
-        ? Math.max(...espacios.value.map(e => Number(e.id)))
+/**
+ * Alternar Operatividad
+ * Cambia entre 'true' (Disponible) y 'false' (Inacesible).
+ */
+const conmutarOperatividad = async (espacio) => {
+    let nuevoEstado;
+
+    if (espacio.estado_operativo === 'true') {
+        nuevoEstado = 'false';
+    } else {
+        nuevoEstado = 'true';
+    }
+
+    const espacioActualizado = {
+        ...espacio,
+        estado_operativo: nuevoEstado
+    };
+
+    try {
+        const respuesta = await fetch(`http://100.52.46.68:3000/espacios/${espacio.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(espacioActualizado)
+        });
+
+        if (respuesta.ok) {
+            await cargarDatos(); // Refrescamos la lista para ver el cambio de color
+        }
+    } catch (error) {
+        console.error("Error al actualizar estado del aula:", error);
+    }
+}
+
+const guardarNuevoEspacio = async () => {
+    //ERROR BBDD:
+    // Cálculo manual del ID 
+    const maxId = listaEspacios.value.length > 0
+        ? Math.max(...listaEspacios.value.map(e => Number(e.id)))
         : 0;
-    nuevoEspacio.value.id = (maxId + 1).toString();
+    modeloEspacio.value.id = (maxId + 1).toString();
 
     try {
         const respuesta = await fetch('http://100.52.46.68:3000/espacios', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(nuevoEspacio.value)
+            body: JSON.stringify(modeloEspacio.value)
         });
 
         if (respuesta.ok) {
-            alert(`Espacio "${nuevoEspacio.value.nombre}" registrado con ID: ${nuevoEspacio.value.id}`);
-            // Resetear formulario
-            nuevoEspacio.value = {
+            alert(`Aula "${modeloEspacio.value.nombre}" registrada correctamente.`);
+            // Reset del formulario
+            modeloEspacio.value = {
                 id: '', nombre: '', ubicacion_planta: '',
                 capacidad_max: 0, equipamiento: '', estado_operativo: 'true'
             };
-            await cargarEspacios();
-        } else {
-            const errorData = await respuesta.json();
-            alert("Error del servidor: " + (errorData.error || "No se pudo insertar"));
+            await cargarDatos();
         }
     } catch (e) {
-        alert("Error de red al conectar con la API");
+        alert("Error de red al registrar espacio.");
     }
 }
 
-const borrarEspacio = async (id) => {
-    if (confirm("¿Estás seguro de eliminar este espacio?")) {
+const borrarRegistro = async (id) => {
+    if (confirm("¿Seguro que quieres eliminar este espacio? Se borrarán sus datos asociados.")) {
         await fetch(`http://100.52.46.68:3000/espacios/${id}`, { method: 'DELETE' });
-        cargarEspacios();
+        await cargarDatos();
     }
 }
 
-onMounted(cargarEspacios);
+onMounted(cargarDatos);
 </script>
 
 <template>
     <div class="gestion-container">
-        <h3>Gestión de Espacios (H6)</h3>
+        <header class="seccion-header">
+            <h3>Gestión de Espacios e Instalaciones (H6)</h3>
+        </header>
 
-        <form @submit.prevent="guardarEspacio" class="form-grid">
-            <input v-model="nuevoEspacio.nombre" placeholder="Nombre (ej. Aula 103)" required>
-            <input v-model="nuevoEspacio.ubicacion_planta" placeholder="Planta (ej. Primera planta)" required>
+        <form @submit.prevent="guardarNuevoEspacio" class="form-grid">
+            <input v-model="modeloEspacio.nombre" placeholder="Nombre (ej. Aula 103)" required>
+            <input v-model="modeloEspacio.ubicacion_planta" placeholder="Planta (ej. Segunda planta)" required>
 
             <div class="input-labeled">
-                <label>Capacidad Máx.</label>
-                <input v-model="nuevoEspacio.capacidad_max" type="number" required>
+                <label>Capacidad Máxima (Aforo)</label>
+                <input v-model="modeloEspacio.capacidad_max" type="number" required>
             </div>
 
-            <select v-model="nuevoEspacio.estado_operativo" required>
+            <select v-model="modeloEspacio.estado_operativo" required>
                 <option value="true">Operativo</option>
                 <option value="false">No Operativo</option>
             </select>
 
-            <input v-model="nuevoEspacio.equipamiento" placeholder="Equipamiento (ej. Pizarra, Proyector)"
-                class="full-width">
+            <input v-model="modeloEspacio.equipamiento" placeholder="Equipamiento (ej. Proyector, 20 PCs, AC)" class="full-width">
 
-            <button type="submit" class="btn-success">Registrar Espacio</button>
+            <button type="submit" class="btn-success">Dar de Alta Espacio</button>
         </form>
 
         <div class="table-container">
@@ -92,26 +133,31 @@ onMounted(cargarEspacios);
                 <thead>
                     <tr>
                         <th>ID</th>
-                        <th>Nombre</th>
+                        <th>Espacio</th>
                         <th>Planta</th>
-                        <th>Capacidad</th>
+                        <th>Aforo</th>
                         <th>Estado</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="es in espacios" :key="es.id">
-                        <td>{{ es.id }}</td>
+                    <tr v-for="es in listaEspacios" :key="es.id">
+                        <td><strong>#{{ es.id }}</strong></td>
                         <td>{{ es.nombre }}</td>
                         <td>{{ es.ubicacion_planta }}</td>
                         <td>{{ es.capacidad_max }} pax</td>
                         <td>
                             <span :class="es.estado_operativo === 'true' ? 'status-ok' : 'status-err'">
-                                {{ es.estado_operativo === 'true' ? 'Disponible' : 'Fuera de Servicio' }}
+                                {{ es.estado_operativo === 'true' ? 'Disponible' : 'Inaccesible ' }}
                             </span>
                         </td>
-                        <td>
-                            <button @click="borrarEspacio(es.id)" class="btn-danger">Borrar</button>
+                        <td class="td-actions">
+                            <button @click="conmutarOperatividad(es)" 
+                                    :class="es.estado_operativo === 'true' ? 'btn-warn' : 'btn-ok'">
+                                {{ es.estado_operativo === 'true' ? 'Desactivar' : 'Activar' }}
+                            </button>
+                            
+                            <button @click="borrarRegistro(es.id)" class="btn-danger">Borrar</button>
                         </td>
                     </tr>
                 </tbody>
@@ -121,6 +167,8 @@ onMounted(cargarEspacios);
 </template>
 
 <style scoped>
+.seccion-header { margin-bottom: 20px; border-left: 5px solid #3498db; padding-left: 15px; }
+
 .form-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -128,86 +176,55 @@ onMounted(cargarEspacios);
     background: #fff;
     padding: 20px;
     border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
 }
 
-.full-width {
-    grid-column: span 2;
-}
+.full-width { grid-column: span 2; }
 
-.input-labeled {
-    display: flex;
-    flex-direction: column;
-    text-align: left;
-}
+.input-labeled { display: flex; flex-direction: column; text-align: left; }
+.input-labeled label { font-size: 0.7rem; color: #7f8c8d; margin-bottom: 2px; padding-left: 5px; }
 
-.input-labeled label {
-    font-size: 0.7rem;
-    color: #7f8c8d;
-    margin-bottom: 2px;
-    padding-left: 5px;
-}
-
-select,
-input {
-    padding: 10px;
+/* Estilo solicitado: fondo oscuro y texto blanco */
+select, input {
+    padding: 12px;
     border: 1px solid #ccc;
     border-radius: 4px;
     color: #fff;
-    /* Texto blanco solicitado */
     background: #2c3e50;
+    transition: all 0.3s;
 }
 
-option {
-    color: #fff;
-}
+input:focus { border-color: #3498db; outline: none; }
 
 .btn-success {
     grid-column: span 2;
     background: #27ae60;
     color: white;
     border: none;
-    padding: 12px;
+    padding: 14px;
     cursor: pointer;
     border-radius: 4px;
     font-weight: bold;
 }
 
 .table-container {
-    margin-top: 25px;
+    margin-top: 30px;
     background: white;
     padding: 15px;
     border-radius: 8px;
     color: #333;
 }
 
-table {
-    width: 100%;
-    border-collapse: collapse;
-}
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 14px; text-align: left; border-bottom: 1px solid #eee; }
+th { background: #f9f9f9; text-transform: uppercase; font-size: 0.75rem; color: #7f8c8d; }
 
-th,
-td {
-    padding: 12px;
-    text-align: left;
-    border-bottom: 1px solid #eee;
-}
+.td-actions { display: flex; gap: 8px; }
 
-.status-ok {
-    color: #27ae60;
-    font-weight: bold;
-}
+.status-ok { color: #27ae60; font-weight: bold; }
+.status-err { color: #e74c3c; font-weight: bold; }
 
-.status-err {
-    color: #e74c3c;
-    font-weight: bold;
-}
-
-.btn-danger {
-    background: #e74c3c;
-    color: white;
-    border: none;
-    padding: 6px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-}
+.btn-ok { background: #27ae60; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; }
+.btn-warn { background: #f39c12; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; }
+.btn-danger { background: #e74c3c; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; }
 </style>

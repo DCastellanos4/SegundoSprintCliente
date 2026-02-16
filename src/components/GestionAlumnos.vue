@@ -1,14 +1,21 @@
 <script setup>
+/**
+ * COMPONENTE: GestionAlumnos.vue
+ * Descripción: Módulo para el CRUD de alumnos. 
+ * Incluye gestión de estados (Activo/Inactivo) y validación de duplicados.
+ */
 import { ref, onMounted } from 'vue'
 
-const alumnos = ref([])
-const cursos = ref([])
+const listaAlumnos = ref([])
+const listaCursos = ref([])
+const cargando = ref(false)
 
+// Control de UI para el borrado 
 const mostrarModalBorrado = ref(false)
-const alumnoParaBorrar = ref(null)
+const alumnoSeleccionado = ref(null)
 
-// Ajustado exactamente a lo que tu API espera (según tus imágenes)
-const nuevoAlumno = ref({
+// Modelo para el formulario
+const modeloAlumno = ref({
     nia: '',
     nombre: '',
     apellidos: '',
@@ -18,123 +25,178 @@ const nuevoAlumno = ref({
     estado_id: 1
 })
 
-const cargarDatos = async () => {
+/**
+ * Función para traer datos de la API.
+ * Usamos Promise.all para cargar alumnos y cursos en paralelo y ganar velocidad.
+ */
+const cargarInformacion = async () => {
+    cargando.value = true
     try {
-        const [resAlu, resCur] = await Promise.all([
+        const [respuestaAlumnos, respuestaCursos] = await Promise.all([
             fetch('http://100.52.46.68:3000/alumnos'),
             fetch('http://100.52.46.68:3000/cursos')
         ]);
-        alumnos.value = await resAlu.json();
-        cursos.value = await resCur.json();
+
+        const datosBrutos = await respuestaAlumnos.json();
+
+        /**
+         * ordenacion por NIA de alumnos
+         */
+        listaAlumnos.value = datosBrutos.sort((a, b) => {
+            return a.nia.localeCompare(b.nia, undefined, { numeric: true });
+        });
+
+        listaCursos.value = await respuestaCursos.json();
     } catch (error) {
-        console.error("Error al cargar datos:", error);
+        console.error("Fallo al sincronizar con la API:", error);
+    } finally {
+        cargando.value = false
     }
 }
 
-const guardarAlumno = async () => {
-    // Validación de duplicados por NIA o Correo
-    const existe = alumnos.value.find(a =>
-        a.nia === nuevoAlumno.value.nia ||
-        a.correo_electronico === nuevoAlumno.value.correo_electronico
+/**
+ * Alternar entre activo e inactivo
+ */
+const conmutarEstado = async (alumno) => {
+    // Si es 1 pasa a 2, si es cualquier otra cosa (inactivo) vuelve a 1
+    let nuevoEstado;
+
+    if (Number(alumno.estado_id) === 1) {
+        nuevoEstado = 2;
+    } else {
+        nuevoEstado = 1;
+    }
+    // Ahora ya podemos usar 'nuevoEstado' para actualizar el objeto
+    const datosActualizados = { ...alumno, estado_id: nuevoEstado };
+
+
+    try {
+        const res = await fetch(`http://100.52.46.68:3000/alumnos/${alumno.nia}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(datosActualizados)
+        });
+
+        if (res.ok) await cargarInformacion();
+        else alert("La API rechazó el cambio de estado.");
+
+    } catch (error) {
+        console.error("Error en la conexión PUT:", error);
+    }
+}
+
+/**
+ * registrar un alumno que no tenga mismo NIA y email
+ */
+const registrarAlumno = async () => {
+    // validacion del lado del cliente para ahorrar peticiones a la API
+    const duplicado = listaAlumnos.value.find(a =>
+        a.nia === modeloAlumno.value.nia ||
+        a.correo_electronico === modeloAlumno.value.correo_electronico
     );
 
-    if (existe) {
-        alert("Error: Ya existe un alumno con ese NIA o correo electrónico.");
+    if (duplicado) {
+        alert("¡Ojo! Ese NIA o correo ya están registrados en el sistema.");
         return;
     }
 
     try {
-        const respuesta = await fetch('http://100.52.46.68:3000/alumnos', {
+        const res = await fetch('http://100.52.46.68:3000/alumnos', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(nuevoAlumno.value)
+            body: JSON.stringify(modeloAlumno.value)
         });
 
-        if (respuesta.ok) {
-            // Resetear formulario
-            nuevoAlumno.value = {
+        if (res.ok) {
+            // Limpiamos el formulario reseteando el objeto
+            modeloAlumno.value = {
                 nia: '', nombre: '', apellidos: '',
                 curso_id: '', correo_electronico: '',
                 tutor_legal_contacto: '', estado_id: 1
             };
-            await cargarDatos();
-            alert("Alumno insertado con éxito");
-        } else {
-            const errorText = await respuesta.text();
-            alert("Error en el servidor: " + errorText);
+            await cargarInformacion();
+            alert("Alumno dado de alta correctamente.");
         }
     } catch (error) {
-        alert("Error de conexión al insertar");
+        alert("No se pudo conectar con el servidor de base de datos.");
     }
 }
 
-const ejecutarBorrado = async () => {
+/**
+ * metodo de borrado para alumnos
+ */
+const borrarDefinitivamente = async () => {
     try {
-        await fetch(`http://100.52.46.68:3000/alumnos/${alumnoParaBorrar.value.nia}`, {
+        const res = await fetch(`http://100.52.46.68:3000/alumnos/${alumnoSeleccionado.value.nia}`, {
             method: 'DELETE'
         });
-        mostrarModalBorrado.value = false;
-        cargarDatos();
+
+        if (res.ok) {
+            mostrarModalBorrado.value = false;
+            await cargarInformacion();
+        }
     } catch (error) {
-        console.error("Error:", error);
+        console.error("Error al eliminar registro:", error);
     }
 }
 
-onMounted(cargarDatos);
+// cuando se carga, enseñamos la informacion de los alumnos
+onMounted(cargarInformacion);
 </script>
 
 <template>
     <div class="gestion-container">
-        <h3>Gestión de Alumnos (H4)</h3>
+        <header class="seccion-header">
+            <h3>Gestión de Alumnado (H4)</h3>
+        </header>
 
-        <form @submit.prevent="guardarAlumno" class="form-grid">
-            <input v-model="nuevoAlumno.nia" placeholder="NIA (Ej: 2026002)" required>
-            <input v-model="nuevoAlumno.nombre" placeholder="Nombre" required>
-            <input v-model="nuevoAlumno.apellidos" placeholder="Apellidos" required>
-            <input v-model="nuevoAlumno.correo_electronico" type="text" placeholder="Correo Electrónico" required>
-            <input v-model="nuevoAlumno.tutor_legal_contacto" placeholder="Email Tutor Legal" required>
+        <form @submit.prevent="registrarAlumno" class="form-grid">
+            <input v-model="modeloAlumno.nia" placeholder="NIA (Ej: 2026002)" required>
+            <input v-model="modeloAlumno.nombre" placeholder="Nombre" required>
+            <input v-model="modeloAlumno.apellidos" placeholder="Apellidos" required>
+            <input v-model="modeloAlumno.correo_electronico" type="email" placeholder="Email institucional" required>
+            <input v-model="modeloAlumno.tutor_legal_contacto" placeholder="Email Tutor/a Legal" required>
 
-            <select v-model="nuevoAlumno.curso_id" required>
-                <option value="" disabled>Seleccione Curso</option>
-                <option v-for="c in cursos" :key="c.id" :value="c.id">
-                    {{ c.nombre_curso }}
+            <select v-model="modeloAlumno.curso_id" required>
+                <option value="" disabled>Seleccionar Curso...</option>
+                <option v-for="curso in listaCursos" :key="curso.id" :value="curso.id">
+                    {{ curso.nombre_curso }}
                 </option>
             </select>
 
-            <div class="checkbox-container">
-                <label>
-                    <input type="checkbox" :checked="Number(nuevoAlumno.estado_id) === 1"
-                        @change="nuevoAlumno.estado_id = $event.target.checked ? 1 : 2">
-                    <span v-if="Number(nuevoAlumno.estado_id) === 1">Alumno Activo</span>
-                    <span v-else>Alumno Inactivo</span>
-                </label>
-            </div>
-
-            <button type="submit" class="btn-success">Registrar Alumno</button>
+            <button type="submit" class="btn-success">Añadir alumno</button>
         </form>
 
         <div class="table-container">
-            <table>
+            <div v-if="cargando" class="loader">Sincronizando datos...</div>
+            <table v-else>
                 <thead>
                     <tr>
                         <th>NIA</th>
-                        <th>Alumno</th>
-                        <th>Curso</th>
+                        <th>Nombre Completo</th>
+                        <th>Curso Asignado</th>
                         <th>Estado</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="a in alumnos" :key="a.id">
-                        <td>{{ a.nia }}</td>
-                        <td>{{ a.nombre }} {{ a.apellidos }}</td>
-                        <td>{{cursos.find(c => c.id == a.curso_id)?.nombre_curso || 'N/A'}}</td>
+                    <tr v-for="alumno in listaAlumnos" :key="alumno.id">
+                        <td><strong>{{ alumno.nia }}</strong></td>
+                        <td>{{ alumno.nombre }} {{ alumno.apellidos }}</td>
+                        <td>{{listaCursos.find(c => c.id == alumno.curso_id)?.nombre_curso || 'Sin curso'}}</td>
                         <td>
-                            <span v-if="Number(a.estado_id) === 1" class="status-active">Activo</span>
-                            <span v-else class="status-inactive">Inactivo</span>
+                            <span :class="Number(alumno.estado_id) === 1 ? 'status-active' : 'status-inactive'">
+                                <!-- if's compactos -->
+                                {{ Number(alumno.estado_id) === 1 ? 'ACTIVO' : 'INACTIVO' }}
+                            </span>
                         </td>
-                        <td>
-                            <button @click="alumnoParaBorrar = a; mostrarModalBorrado = true"
+                        <td class="td-actions">
+                            <button @click="conmutarEstado(alumno)"
+                                :class="Number(alumno.estado_id) === 1 ? 'btn-warn' : 'btn-ok'">
+                                {{ Number(alumno.estado_id) === 1 ? 'Suspender' : 'Reactivar' }}
+                            </button>
+
+                            <button @click="alumnoSeleccionado = alumno; mostrarModalBorrado = true"
                                 class="btn-danger">Eliminar</button>
                         </td>
                     </tr>
@@ -144,10 +206,10 @@ onMounted(cargarDatos);
 
         <div v-if="mostrarModalBorrado" class="modal-overlay">
             <div class="modal-box">
-                <h4>¿Eliminar Alumno?</h4>
-                <p>¿Estás seguro de eliminar a <strong>{{ alumnoParaBorrar.nombre }}</strong>?</p>
+                <h4>Atención: Acción Irreversible</h4>
+                <p>¿Realmente deseas eliminar a <strong>{{ alumnoSeleccionado.nombre }}</strong> de la aplicación?</p>
                 <div class="modal-actions">
-                    <button @click="ejecutarBorrado" class="btn-danger">Confirmar</button>
+                    <button @click="borrarDefinitivamente" class="btn-danger">Sí, eliminar</button>
                     <button @click="mostrarModalBorrado = false" class="btn-sec">Cancelar</button>
                 </div>
             </div>
@@ -156,6 +218,22 @@ onMounted(cargarDatos);
 </template>
 
 <style scoped>
+/* Contenedores y Layout */
+.seccion-header {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.badge {
+    background: #34495e;
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+}
+
 .form-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -163,23 +241,23 @@ onMounted(cargarDatos);
     background: #fff;
     padding: 20px;
     border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
 }
 
+/* Inputs con estilo corporativo oscuro (Solicitado por el usuario) */
 select,
 input {
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
     color: #fff;
-    /* Cambiado a oscuro para que sea legible */
+    background: #2c3e50;
+    transition: border-color 0.3s;
 }
 
-.checkbox-container {
-    display: flex;
-    align-items: center;
-    grid-column: span 1;
-    padding-left: 10px;
-    color: #333;
+input:focus {
+    border-color: #3498db;
+    outline: none;
 }
 
 .btn-success {
@@ -187,27 +265,77 @@ input {
     background: #27ae60;
     color: white;
     border: none;
-    padding: 12px;
+    padding: 14px;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: 6px;
+    font-weight: bold;
 }
 
+/* Estados Visuales */
 .status-active {
     color: #27ae60;
-    font-weight: bold;
+    font-weight: 800;
+    font-size: 0.85rem;
 }
 
 .status-inactive {
     color: #e74c3c;
-    font-weight: bold;
+    font-weight: 800;
+    font-size: 0.85rem;
+}
+
+.td-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* Botonería de la tabla */
+.btn-warn {
+    background: #f39c12;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.btn-ok {
+    background: #27ae60;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.btn-danger {
+    background: #e74c3c;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.btn-sec {
+    background: #95a5a6;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
 }
 
 .table-container {
     margin-top: 30px;
     background: white;
-    padding: 10px;
+    padding: 15px;
     border-radius: 8px;
     color: #333;
+    overflow-x: auto;
 }
 
 table {
@@ -217,11 +345,19 @@ table {
 
 th,
 td {
-    padding: 12px;
+    padding: 14px;
     text-align: left;
-    border-bottom: 1px solid #eee;
+    border-bottom: 1px solid #f0f0f0;
 }
 
+th {
+    background: #f8f9fa;
+    color: #7f8c8d;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+}
+
+/* Capa de Modal */
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -237,34 +373,24 @@ td {
 
 .modal-box {
     background: white;
-    padding: 30px;
+    padding: 40px;
     border-radius: 12px;
     text-align: center;
     color: #333;
+    max-width: 400px;
 }
 
 .modal-actions {
     display: flex;
-    gap: 10px;
+    gap: 15px;
     justify-content: center;
-    margin-top: 20px;
+    margin-top: 25px;
 }
 
-.btn-danger {
-    background: #e74c3c;
-    color: white;
-    border: none;
-    padding: 8px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.btn-sec {
-    background: #95a5a6;
-    color: white;
-    border: none;
-    padding: 8px 12px;
-    border-radius: 4px;
-    cursor: pointer;
+.loader {
+    padding: 40px;
+    text-align: center;
+    color: #95a5a6;
+    font-style: italic;
 }
 </style>

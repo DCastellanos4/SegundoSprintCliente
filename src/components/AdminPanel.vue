@@ -1,27 +1,37 @@
 <script setup>
+/**
+ * COMPONENTE: AdminPanel.vue
+ * gestiona la navegacion interna de cada usuario
+ */
 import { ref } from 'vue'
 import Profesores from './GestionProfesores.vue'
 import Alumnos from './GestionAlumnos.vue'
 import Cursos from './GestionCursos.vue'
-import Espacios from './GestionEspacios.vue' // 1. Importar el nuevo componente H6
+import Espacios from './GestionEspacios.vue' // H6: Lugares para reservas e incidencias
+import Etapas from './GestionEtapas.vue'
+import Turnos from './GestionTurnos.vue'
+import Departamento from './GestionDepartamentos.vue'
+import Roles from './GestionRoles.vue'
 
+// recibimos el usuario para saber que rol tiene y mostrarle sus opciones
 const props = defineProps(['usuario']);
+// evento para poder hacer el logout
 const emit = defineEmits(['logout']);
 
-// Variable para controlar qué sección vemos
+// Estado reactivo para saber qué componente hijo renderizar
 const seccionActual = ref('menu');
 
-// 2. Funciones de navegación actualizadas
+// cambiamos el valor de la ref para que el v-else-if haga el cambio del render
 const irAMenu = () => seccionActual.value = 'menu';
 const irAProfesores = () => seccionActual.value = 'profesores';
 const irAAlumnos = () => seccionActual.value = 'alumnos';
 const irACursos = () => seccionActual.value = 'cursos';
-const irAEspacios = () => seccionActual.value = 'espacios'; // Nueva función H6
+const irAEspacios = () => seccionActual.value = 'espacios';
+const irAEtapas = () => seccionActual.value = 'etapas';
+const irAturnos = () => seccionActual.value = 'turnos';
+const irAdepartamentos = () => seccionActual.value = 'departamentos';
+const irAroles = () => seccionActual.value = 'roles';
 
-// Funciones para las acciones de servicios
-const crearIncidencia = () => console.log("H2: Abriendo formulario...");
-const reservarAula = () => console.log("H2: Abriendo reservas...");
-const resolverIncidencia = () => console.log("H2: Listado TIC...");
 </script>
 
 <template>
@@ -56,7 +66,11 @@ const resolverIncidencia = () => console.log("H2: Listado TIC...");
                     <button @click="irAProfesores">Profesores (H3)</button>
                     <button @click="irAAlumnos">Alumnos (H4)</button>
                     <button @click="irACursos">Cursos (H5)</button>
-                    <button @click="irAEspacios">Gestionar Espacios (H6)</button>
+                    <button @click="irAEspacios">Espacios (H6)</button>
+                    <button @click="irAEtapas">Etapas (H8)</button>
+                    <button @click="irAturnos">Turnos (H9)</button>
+                    <button @click="irAdepartamentos">Departamentos (H10)</button>
+                    <button @click="irAroles">Roles (H11)</button>
                 </div>
                 <p class="admin-note">Tienes acceso total al sistema.</p>
             </section>
@@ -73,6 +87,18 @@ const resolverIncidencia = () => console.log("H2: Listado TIC...");
         </div>
         <div v-else-if="seccionActual === 'espacios'">
             <Espacios />
+        </div>
+        <div v-else-if="seccionActual === 'etapas'">
+            <Etapas />
+        </div>
+        <div v-else-if="seccionActual === 'turnos'">
+            <Turnos />
+        </div>
+        <div v-else-if="seccionActual === 'departamentos'">
+            <Departamento />
+        </div>
+        <div v-else-if="seccionActual === 'roles'">
+            <Roles />
         </div>
 
     </div>
@@ -129,29 +155,40 @@ button {
     transition: opacity 0.2s;
 }
 
-button:hover { opacity: 0.9; }
+button:hover {
+    opacity: 0.9;
+}
 
-.btn-primary { background-color: #3498db; color: white; }
-.btn-accent { background-color: #f39c12; color: white; }
-.btn-success { background-color: #27ae60; color: white; }
-.btn-danger { background-color: #e74c3c; color: white; }
-.logout-btn { background-color: #666; color: white; }
+.btn-primary {
+    background-color: #3498db;
+    color: white;
+}
 
-/* Contenedor Grid para Admin */
+.btn-accent {
+    background-color: #f39c12;
+    color: white;
+}
+
+.btn-success {
+    background-color: #27ae60;
+    color: white;
+}
+
+.btn-danger {
+    background-color: #e74c3c;
+    color: white;
+}
+
+.logout-btn {
+    background-color: #666;
+    color: white;
+}
+
 .admin-buttons-container {
     display: grid;
-    grid-template-columns: 1fr 1fr; /* Mantiene el diseño de 2 columnas */
+    grid-template-columns: 1fr 1fr;
     gap: 10px;
     margin-top: 10px;
-}
-.boton-admin{
-    background-color: #333;
-}
-
-/* El botón de espacios (danger) se coloca al final */
-.admin-buttons-container .btn-danger {
-    grid-column: span 2;
-    margin-top: 5px;
 }
 
 .admin-buttons-container button:not(.btn-danger) {
